@@ -25,6 +25,7 @@ type Footer struct {
 	LastRefresh  time.Time
 	PathExplicit bool
 	SourceMode   data.SourceMode
+	RigCount     int // Number of rigs in multi-rig mode
 }
 
 // ParadeBindings are the default keybindings for the parade view.
@@ -65,10 +66,13 @@ func (f Footer) View() string {
 
 	// Build source info (left side)
 	sourceInfo := ""
-	if f.SourceMode == data.SourceCLI || f.SourcePath != "" {
+	if f.SourceMode == data.SourceMultiRig || f.SourceMode == data.SourceCLI || f.SourcePath != "" {
 		name := "bd list"
 		mode := "(cli)"
-		if f.SourceMode != data.SourceCLI {
+		if f.SourceMode == data.SourceMultiRig {
+			name = fmt.Sprintf("bd list (%d rigs)", f.RigCount)
+			mode = "(cross-rig)"
+		} else if f.SourceMode != data.SourceCLI {
 			name = filepath.Base(f.SourcePath)
 			mode = "(legacy)"
 			if f.PathExplicit {

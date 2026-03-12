@@ -28,6 +28,7 @@ func main() {
 	blockTypesFlag := flag.String("block-types", "", "Comma-separated dependency types that count as blockers (default: blocks)")
 	statusMode := flag.Bool("status", false, "Output tmux status line and exit")
 	showVersion := flag.Bool("version", false, "Print version and exit")
+	rigFlag := flag.String("rig", "", "View beads from specific rigs (comma-separated, or 'all' for all rigs in town)")
 	flag.Parse()
 
 	if *showVersion {
@@ -38,13 +39,24 @@ func main() {
 	// Parse blocking types from flag, env var, or default
 	blockingTypes := parseBlockingTypes(*blockTypesFlag)
 
-	// Resolve data source: JSONL file or bd CLI fallback
+	// Resolve data source: multi-rig, JSONL file, or bd CLI fallback
 	cwd, err := os.Getwd()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error getting working directory: %v\n", err)
 		os.Exit(1)
 	}
-	source := resolveSource(cwd, *path)
+
+	var source data.Source
+	if *rigFlag != "" {
+		source, err = resolveMultiRigSource(cwd, *rigFlag)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+	} else {
+		source = resolveSource(cwd, *path)
+	}
+
 	if source.Mode == SourceJSONL && source.Path == "" {
 		fmt.Fprintf(os.Stderr, "No .beads/issues.jsonl found and bd not on PATH.\n\n")
 		fmt.Fprintf(os.Stderr, "Run mg from inside a project with Beads, or specify a path:\n")
@@ -55,6 +67,13 @@ func main() {
 	// Load issues
 	var issues []data.Issue
 	switch source.Mode {
+	case data.SourceMultiRig:
+		issues, err = data.FetchIssuesMultiRig(source.Rigs)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error loading cross-rig issues: %v\n\n", err)
+			fmt.Fprintf(os.Stderr, "Ensure the Dolt server is running and bd is working.\n")
+			os.Exit(1)
+		}
 	case SourceCLI:
 		issues, err = data.FetchIssuesCLI(source.ProjectDir)
 		if err != nil {
@@ -146,6 +165,46 @@ func findBeadsDir(dir string) string {
 func bdOnPath() bool {
 	_, err := exec.LookPath("bd")
 	return err == nil
+}
+
+// resolveMultiRigSource builds a multi-rig source from --rig flag value.
+func resolveMultiRigSource(cwd, rigFlag string) (data.Source, error) {
+	if !bdOnPath() {
+		return data.Source{}, fmt.Errorf("bd not on PATH (required for --rig)")
+	}
+
+	townRoot := data.FindTownRoot(cwd)
+	if townRoot == "" {
+		return data.Source{}, fmt.Errorf("not inside a Gas Town directory (no mayor/town.json found)")
+	}
+
+	allRigs, err := data.LoadRigsFromTown(townRoot)
+	if err != nil {
+		return data.Source{}, fmt.Errorf("loading rig list: %w", err)
+	}
+
+	names := strings.Split(rigFlag, ",")
+	for i := range names {
+		names[i] = strings.TrimSpace(names[i])
+	}
+	rigs := data.FilterRigs(allRigs, names)
+	if len(rigs) == 0 {
+		return data.Source{}, fmt.Errorf("no rigs matched %q (available: %s)", rigFlag, rigNames(allRigs))
+	}
+
+	return data.Source{
+		Mode: data.SourceMultiRig,
+		Rigs: rigs,
+	}, nil
+}
+
+// rigNames returns a comma-separated list of rig names.
+func rigNames(rigs []data.RigInfo) string {
+	names := make([]string, len(rigs))
+	for i, r := range rigs {
+		names[i] = r.Name
+	}
+	return strings.Join(names, ", ")
 }
 
 // resolveSource determines how mg should load issues.

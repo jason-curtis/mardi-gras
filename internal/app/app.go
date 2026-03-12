@@ -129,8 +129,9 @@ type Model struct {
 	recovering     bool
 	recoveryDialog components.RecoveryDialog
 
-	// Data source mode (JSONL file watcher vs bd CLI polling)
+	// Data source mode (JSONL file watcher vs bd CLI polling vs multi-rig)
 	sourceMode data.SourceMode
+	sourceRigs []data.RigInfo // Populated in SourceMultiRig mode
 
 	// Startup: issue ID from bd show --current, consumed after first parade build
 	pendingCurrentID string
@@ -216,6 +217,7 @@ func NewWithGuard(issues []data.Issue, source data.Source, blockingTypes map[str
 		changedIDs:     make(map[string]bool),
 		prevIssueMap:   prevMap,
 		sourceMode:     source.Mode,
+		sourceRigs:     source.Rigs,
 		metadataSchema: metaSchema,
 		startedAt:      time.Now(),
 		oscGuard:       guard,
@@ -257,18 +259,26 @@ func fetchDoctorDiagnostics() tea.Msg {
 
 // startPoll returns the appropriate polling Cmd based on sourceMode.
 func (m Model) startPoll() tea.Cmd {
-	if m.sourceMode == data.SourceCLI {
+	switch m.sourceMode {
+	case data.SourceMultiRig:
+		return data.PollMultiRig(m.sourceRigs)
+	case data.SourceCLI:
 		return data.PollCLI(m.projectDir)
+	default:
+		return data.WatchFile(m.watchPath, m.lastFileMod)
 	}
-	return data.WatchFile(m.watchPath, m.lastFileMod)
 }
 
 // startPollImmediate returns an immediate-fetch Cmd for post-mutation refresh.
 func (m Model) startPollImmediate() tea.Cmd {
-	if m.sourceMode == data.SourceCLI {
+	switch m.sourceMode {
+	case data.SourceMultiRig:
+		return data.FetchIssuesMultiRigNow(m.sourceRigs)
+	case data.SourceCLI:
 		return data.FetchIssuesNow(m.projectDir)
+	default:
+		return data.WatchFile(m.watchPath, m.lastFileMod)
 	}
-	return data.WatchFile(m.watchPath, m.lastFileMod)
 }
 
 // activateGasTown shows the Gas Town panel and schedules its data refreshes.
@@ -2344,6 +2354,7 @@ func (m *Model) layout() {
 
 	if len(m.parade.Items) == 0 {
 		m.parade = views.NewParadeWithData(m.issues, m.groups, detailIssueMap, paradeW, bodyH, m.blockingTypes)
+		m.parade.MultiRig = m.sourceMode == data.SourceMultiRig
 		m.syncSelection()
 		if m.pendingCurrentID != "" {
 			m.restoreParadeSelection(m.pendingCurrentID)
@@ -2400,6 +2411,7 @@ func (m *Model) rebuildParade() {
 	}
 
 	m.parade = views.NewParadeWithData(filteredIssues, groups, paradeIssueMap, paradeW, bodyH, m.blockingTypes)
+	m.parade.MultiRig = m.sourceMode == data.SourceMultiRig
 	m.parade.MatchHighlights = highlights
 	if oldShowClosed {
 		m.parade.ToggleClosed()
@@ -2661,6 +2673,7 @@ func (m Model) View() tea.View {
 		footer.LastRefresh = m.lastFileMod
 		footer.PathExplicit = m.pathExplicit
 		footer.SourceMode = m.sourceMode
+		footer.RigCount = len(m.sourceRigs)
 		bottomBar = footer.View()
 	}
 
