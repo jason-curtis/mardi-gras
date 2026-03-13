@@ -62,8 +62,8 @@ func TestMutateResultClosed(t *testing.T) {
 	model, _ = got.Update(mutateResultMsg{issueID: "open-1", action: "closed"})
 	got = model.(Model)
 
-	if !got.confetti.Active() {
-		t.Fatal("expected confetti to be active after closing an issue")
+	if got.toast.Message == "" {
+		t.Fatal("expected toast notification after closing an issue")
 	}
 }
 

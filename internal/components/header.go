@@ -18,7 +18,6 @@ type Header struct {
 	TownStatus       *gastown.TownStatus
 	GasTownAvailable bool
 	ProblemCount     int
-	BeadOffset       int    // shimmer animation offset, incremented by tick
 	CurrentIssueID   string // active issue from bd show --current
 }
 
@@ -112,7 +111,7 @@ func (h Header) View() string {
 	return lipgloss.JoinVertical(lipgloss.Left, titleLine, beadStr)
 }
 
-// renderBeadString creates the decorative bead string separator with shimmer animation.
+// renderBeadString creates the decorative bead string separator with static gradient.
 func (h Header) renderBeadString() string {
 	beads := []string{ui.BeadRound, ui.BeadDiamond}
 
@@ -131,16 +130,7 @@ func (h Header) renderBeadString() string {
 	}
 
 	rawString := strings.Join(parts, "")
-
-	// Animate with shimmer when offset is non-zero, static gradient otherwise
-	var gradientString string
-	if h.BeadOffset > 0 {
-		// Offset cycles through 0.0-1.0 over ~20 ticks (10s at 500ms interval)
-		phase := float64(h.BeadOffset%20) / 20.0
-		gradientString = ui.ApplyShimmerGradient(rawString, phase)
-	} else {
-		gradientString = ui.ApplyMardiGrasGradient(rawString)
-	}
+	gradientString := ui.ApplyMardiGrasGradient(rawString)
 
 	return lipgloss.NewStyle().Width(h.Width).Render(gradientString)
 }
