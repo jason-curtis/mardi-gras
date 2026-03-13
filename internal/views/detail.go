@@ -193,6 +193,11 @@ func (d *Detail) renderContent() string {
 	prioLabel := fmt.Sprintf("%s (%s)", data.PriorityLabel(issue.Priority), data.PriorityName(issue.Priority))
 	lines = append(lines, d.row("Priority:", lipgloss.NewStyle().Foreground(prioColor).Bold(true).Render(prioLabel)))
 
+	// Rig (multi-rig mode)
+	if issue.Rig != "" {
+		lines = append(lines, d.row("Rig:", ui.RigBadge.Render(issue.Rig)))
+	}
+
 	// Owner
 	if issue.Owner != "" {
 		lines = append(lines, d.row("Owner:", ui.DetailValue.Render(issue.Owner)))

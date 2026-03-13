@@ -35,6 +35,11 @@ func TestSourceLabelJSONL(t *testing.T) {
 			src:  Source{Mode: SourceCLI, Path: "/foo/bar"},
 			want: "bd list",
 		},
+		{
+			name: "MultiRig mode",
+			src:  Source{Mode: SourceMultiRig, Rigs: []RigInfo{{Name: "gastown"}, {Name: "beads"}, {Name: "mardigras"}}},
+			want: "bd list (3 rigs)",
+		},
 	}
 
 	for _, tt := range tests {

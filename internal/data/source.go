@@ -14,20 +14,25 @@ import (
 type SourceMode int
 
 const (
-	SourceJSONL SourceMode = iota // Legacy: read from .beads/issues.jsonl (or --path)
-	SourceCLI                     // Preferred: shell out to bd list --json
+	SourceJSONL    SourceMode = iota // Legacy: read from .beads/issues.jsonl (or --path)
+	SourceCLI                        // Preferred: shell out to bd list --json
+	SourceMultiRig                   // Cross-rig: aggregate from multiple rigs via bd list --rig
 )
 
 // Source describes how mg loads its issue data.
 type Source struct {
 	Mode       SourceMode
-	Path       string // JSONL file path (SourceJSONL) or empty (SourceCLI)
-	ProjectDir string // Project root directory
-	Explicit   bool   // True if --path was used
+	Path       string    // JSONL file path (SourceJSONL) or empty (SourceCLI)
+	ProjectDir string    // Project root directory
+	Explicit   bool      // True if --path was used
+	Rigs       []RigInfo // Populated in SourceMultiRig mode
 }
 
 // Label returns a display string for the footer.
 func (s Source) Label() string {
+	if s.Mode == SourceMultiRig {
+		return fmt.Sprintf("bd list (%d rigs)", len(s.Rigs))
+	}
 	if s.Mode == SourceCLI {
 		return "bd list"
 	}

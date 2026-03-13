@@ -111,6 +111,9 @@ type Issue struct {
 	DeferUntil         *time.Time             `json:"defer_until,omitempty"`
 	Metadata           map[string]interface{} `json:"metadata,omitempty"`
 
+	// Rig origin — populated in multi-rig mode to identify the source rig.
+	Rig string `json:"rig,omitempty"`
+
 	// HOP (Hierarchy of Proof) — agent reputation and quality tracking.
 	// These fields will be populated when Beads ships HOP support.
 	Creator      *EntityRef   `json:"creator,omitempty"`

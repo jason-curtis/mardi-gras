@@ -141,6 +141,7 @@ var (
 	AgentBadge  = lipgloss.NewStyle().Foreground(StatusAgent).Bold(true)
 	ConvoyBadge = lipgloss.NewStyle().Foreground(StatusConvoy).Bold(true)
 	GasTownTag  = lipgloss.NewStyle().Foreground(BrightPurple).Italic(true)
+	RigBadge    = lipgloss.NewStyle().Foreground(Silver).Italic(true)
 
 	// Gas Town panel
 	GasTownBorder = lipgloss.NewStyle().

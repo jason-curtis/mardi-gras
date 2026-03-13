@@ -61,6 +61,7 @@ type Parade struct {
 	OrphanedIDs     map[string]bool  // orphaned issues from dead rigs
 	Selected        map[string]bool  // multi-selected issue IDs
 	MatchHighlights map[string][]int // issueID -> matched char indices in title (fuzzy search)
+	MultiRig        bool             // true when viewing issues from multiple rigs
 }
 
 // NewParade creates a parade view from a set of issues.
@@ -445,6 +446,15 @@ func (p *Parade) renderIssue(item ParadeItem, selected bool, distFromCursor int)
 		}
 	}
 
+	// Rig badge (multi-rig mode)
+	rigPrefix := ""
+	rigWidth := 0
+	if p.MultiRig && issue.Rig != "" {
+		rigLabel := issue.Rig
+		rigPrefix = ui.RigBadge.Render(rigLabel) + " "
+		rigWidth = len(rigLabel) + 1
+	}
+
 	// Hierarchical indent based on dot-separated ID depth
 	depth := issue.NestingDepth()
 	indent := strings.Repeat("  ", depth)
@@ -498,7 +508,7 @@ func (p *Parade) renderIssue(item ParadeItem, selected bool, distFromCursor int)
 	innerWidth := p.Width - 4 // │ + space + content + space + │
 
 	// First, constrain the hint length if the terminal is very narrow
-	maxHint := innerWidth - 16 - agentWidth - indentWidth - dueWidth - deferWidth - orphanWidth
+	maxHint := innerWidth - 16 - agentWidth - indentWidth - dueWidth - deferWidth - orphanWidth - rigWidth
 	if maxHint < 0 {
 		maxHint = 0
 	}
@@ -515,7 +525,7 @@ func (p *Parade) renderIssue(item ParadeItem, selected bool, distFromCursor int)
 	}
 
 	hintLen := lipgloss.Width(hint)
-	maxTitle := innerWidth - 16 - hintLen - agentWidth - changeWidth - selectWidth - indentWidth - dueWidth - deferWidth - qualityWidth - orphanWidth
+	maxTitle := innerWidth - 16 - hintLen - agentWidth - changeWidth - selectWidth - indentWidth - dueWidth - deferWidth - qualityWidth - orphanWidth - rigWidth
 	if maxTitle < 0 {
 		maxTitle = 0
 	}
@@ -538,13 +548,14 @@ func (p *Parade) renderIssue(item ParadeItem, selected bool, distFromCursor int)
 	agePct := min(ageDays*100/30, 100) // 30 days = fully stale
 	idStyle := ui.GradientHeat.At(agePct)
 
-	line := fmt.Sprintf("%s%s %s%s%s%s%s %s %s",
+	line := fmt.Sprintf("%s%s %s%s%s%s%s%s %s %s",
 		indent,
 		symStyle.Render(sym),
 		selectPrefix,
 		changePrefix,
 		orphanPrefix,
 		agentPrefix,
+		rigPrefix,
 		idStyle.Render(issue.ID),
 		renderedTitle,
 		prioStyle.Render(prio),
