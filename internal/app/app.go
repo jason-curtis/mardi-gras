@@ -96,6 +96,11 @@ type Model struct {
 	formulaTarget  string
 	formulaMulti   []string
 
+	// Assign input state
+	assigning     bool
+	assignInput   textinput.Model
+	assignIssueID string
+
 	// Nudge input state
 	nudging     bool
 	nudgeInput  textinput.Model
@@ -307,7 +312,7 @@ func (m Model) allProblems() []gastown.Problem {
 }
 
 // agentFinishedMsg is sent when a launched claude session exits.
-type agentFinishedMsg struct{ err error }
+type agentFinishedMsg struct{}
 
 type agentLaunchedMsg struct {
 	issueID    string
@@ -315,8 +320,7 @@ type agentLaunchedMsg struct {
 }
 
 type agentLaunchErrorMsg struct {
-	issueID string
-	err     error
+	err error
 }
 
 type agentStatusMsg struct {
@@ -354,6 +358,12 @@ type nudgeResultMsg struct {
 	target  string
 	message string
 	err     error
+}
+
+type assignResultMsg struct {
+	issueID  string
+	assignee string
+	err      error
 }
 
 type handoffResultMsg struct {
@@ -571,6 +581,33 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		logRoute("recoveryDialog forward")
 		var cmd tea.Cmd
 		m.recoveryDialog, cmd = m.recoveryDialog.Update(msg)
+		return m, cmd
+	}
+
+	// Forward all messages to assign input when active
+	if m.assigning {
+		if km, ok := msg.(tea.KeyPressMsg); ok {
+			switch km.String() {
+			case "ctrl+c":
+				return m, tea.Quit
+			case "esc":
+				m.assigning = false
+				return m, nil
+			case "enter":
+				m.assigning = false
+				issueID := m.assignIssueID
+				assignee := m.assignInput.Value()
+				if assignee == "" {
+					return m, nil
+				}
+				return m, func() tea.Msg {
+					err := data.SetAssignee(issueID, assignee)
+					return assignResultMsg{issueID: issueID, assignee: assignee, err: err}
+				}
+			}
+		}
+		var cmd tea.Cmd
+		m.assignInput, cmd = m.assignInput.Update(msg)
 		return m, cmd
 	}
 
@@ -928,6 +965,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			label = fmt.Sprintf("Nudged %s: %s", msg.target, display)
 		}
 		toast, cmd := components.ShowToast(label, components.ToastSuccess, toastDuration)
+		m.toast = toast
+		return m, cmd
+
+	case assignResultMsg:
+		if msg.err != nil {
+			toast, cmd := components.ShowToast(
+				fmt.Sprintf("Assign failed for %s: %s", msg.issueID, msg.err),
+				components.ToastError, toastDuration,
+			)
+			m.toast = toast
+			return m, cmd
+		}
+		toast, cmd := components.ShowToast(
+			fmt.Sprintf("Assigned %s to %s", msg.issueID, msg.assignee),
+			components.ToastSuccess, toastDuration,
+		)
 		m.toast = toast
 		return m, cmd
 
@@ -1433,53 +1486,21 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.createAndSwitchBranch()
 
 	case "a":
-		// Multi-sling with Gas Town
-		if selected := m.parade.SelectedIssues(); len(selected) > 0 && m.gtEnv.Available {
-			ids := make([]string, len(selected))
-			for i, iss := range selected {
-				ids[i] = iss.ID
-			}
-			m.parade.ClearSelection()
-			return m, func() tea.Msg {
-				err := gastown.SlingMultiple(ids)
-				return multiSlingResultMsg{count: len(ids), err: err}
-			}
-		}
-
 		issue := m.parade.SelectedIssue
-		if issue == nil || !m.agentAvail {
+		if issue == nil {
 			return m, nil
 		}
-		if _, active := m.activeAgents[issue.ID]; active && m.inTmux {
-			_ = agent.SelectAgentWindow(issue.ID)
-			return m, nil
+		m.assigning = true
+		m.assignIssueID = issue.ID
+		m.assignInput = textinput.New()
+		m.assignInput.Prompt = ui.InputPrompt.Render("assign> ")
+		m.assignInput.Placeholder = "Assignee for " + issue.ID + "..."
+		if issue.Assignee != "" {
+			m.assignInput.SetValue(issue.Assignee)
 		}
-
-		if m.gtEnv.Available {
-			issueID := issue.ID
-			return m, func() tea.Msg {
-				err := gastown.Sling(issueID)
-				return slingResultMsg{issueID: issueID, err: err}
-			}
-		}
-
-		deps := issue.EvaluateDependencies(m.detail.IssueMap, m.blockingTypes)
-		prompt := agent.BuildPrompt(*issue, deps, m.detail.IssueMap)
-
-		if m.inTmux {
-			issueID := issue.ID
-			return m, func() tea.Msg {
-				winName, err := agent.LaunchInTmux(prompt, m.projectDir, issueID)
-				if err != nil {
-					return agentLaunchErrorMsg{issueID: issueID, err: err}
-				}
-				return agentLaunchedMsg{issueID: issueID, windowName: winName}
-			}
-		}
-		c := agent.Command(prompt, m.projectDir)
-		return m, tea.ExecProcess(c, func(err error) tea.Msg {
-			return agentFinishedMsg{err: err}
-		})
+		m.assignInput.SetWidth(50)
+		m.assignInput.Focus()
+		return m, textinput.Blink
 
 	case "A":
 		issue := m.parade.SelectedIssue
@@ -2621,6 +2642,8 @@ func (m Model) View() tea.View {
 		bottomBar = m.toast.View(m.width)
 	case m.parade.SelectionCount() > 0:
 		bottomBar = components.BulkFooter(m.width, m.parade.SelectionCount(), m.gtEnv.Available)
+	case m.assigning:
+		bottomBar = inputBarStyle.Render(m.assignInput.View())
 	case m.nudging:
 		bottomBar = inputBarStyle.Render(m.nudgeInput.View())
 	case m.mailComposing:

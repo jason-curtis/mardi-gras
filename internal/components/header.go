@@ -26,14 +26,14 @@ func (h Header) View() string {
 	rolling := len(h.Groups[data.ParadeRolling])
 	linedUp := len(h.Groups[data.ParadeLinedUp])
 	stalled := len(h.Groups[data.ParadeStalled])
-	total := rolling + linedUp + stalled + len(h.Groups[data.ParadePastTheStand])
+	pastTheStand := len(h.Groups[data.ParadePastTheStand])
 
 	titleStr := fmt.Sprintf("%s MARDI GRAS %s", ui.FleurDeLis, ui.FleurDeLis)
 	title := ui.HeaderStyle.Render(ui.ApplyMardiGrasGradient(titleStr))
 
 	counts := ui.HeaderCounts.Render(fmt.Sprintf(
 		" %d ⊘  %d ♪  %d ●  %d ✓ ",
-		stalled, linedUp, rolling, len(h.Groups[data.ParadePastTheStand]),
+		stalled, linedUp, rolling, pastTheStand,
 	))
 
 	agentInfo := ""
@@ -89,8 +89,6 @@ func (h Header) View() string {
 		problemInfo = warnStyle.Render(fmt.Sprintf(" %s%d", ui.SymWarning, h.ProblemCount))
 	}
 
-	bar := h.renderProgressBar(total, len(h.Groups[data.ParadePastTheStand]), 20)
-
 	titleLine := lipgloss.JoinHorizontal(
 		lipgloss.Center,
 		title,
@@ -99,8 +97,6 @@ func (h Header) View() string {
 		agentInfo,
 		gasTownInfo,
 		problemInfo,
-		"  ",
-		bar,
 	)
 
 	// Pad to full width
@@ -133,24 +129,4 @@ func (h Header) renderBeadString() string {
 	gradientString := ui.ApplyMardiGrasGradient(rawString)
 
 	return lipgloss.NewStyle().Width(h.Width).Render(gradientString)
-}
-
-func (h Header) renderProgressBar(total, done, length int) string {
-	if total == 0 {
-		return ""
-	}
-	filledLen := int((float64(done) / float64(total)) * float64(length))
-	emptyLen := length - filledLen
-
-	filled := strings.Repeat("█", filledLen)
-	empty := strings.Repeat("█", emptyLen) // Or "━"
-
-	percent := int((float64(done) / float64(total)) * 100)
-
-	styledFilled := ui.ApplyPartialMardiGrasGradient(filled, length)
-	styledEmpty := lipgloss.NewStyle().Foreground(ui.DimPurple).Render(empty)
-
-	textRight := ui.HeaderCounts.Render(fmt.Sprintf(" %d%%", percent))
-
-	return styledFilled + styledEmpty + textRight
 }

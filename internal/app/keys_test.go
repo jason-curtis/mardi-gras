@@ -596,28 +596,22 @@ func TestFormulaListMsgEmptyFallback(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 29. multi-sling 'a' key with Gas Town and selection
+// 29. 'a' key opens assign input
 // ---------------------------------------------------------------------------
 
-func TestKeyAMultiSlingWithSelection(t *testing.T) {
+func TestKeyAOpensAssignInput(t *testing.T) {
 	got := setupModel(t)
-	got.gtEnv.Available = true
-
-	// Select current item
-	model, _ := got.Update(tea.KeyPressMsg{Code: ' ', Text: " "})
-	got = model.(Model)
-	if got.parade.SelectionCount() == 0 {
-		t.Fatal("expected items to be selected")
-	}
 
 	model, cmd := got.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
 	got = model.(Model)
 
-	if cmd == nil {
-		t.Fatal("expected non-nil cmd from multi-sling")
+	if !got.assigning {
+		t.Fatal("expected assigning to be true after pressing a")
 	}
-	// Selection should be cleared
-	if got.parade.SelectionCount() != 0 {
-		t.Fatal("expected selection to be cleared after multi-sling")
+	if got.assignIssueID != got.parade.SelectedIssue.ID {
+		t.Fatalf("expected assignIssueID %q, got %q", got.parade.SelectedIssue.ID, got.assignIssueID)
+	}
+	if cmd == nil {
+		t.Fatal("expected blink cmd from assign input")
 	}
 }
