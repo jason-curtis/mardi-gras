@@ -16,6 +16,11 @@ func ClaimIssue(issueID string) error {
 	return execWithTimeout(timeoutShort, "bd", "update", issueID, "--claim")
 }
 
+// SetAssignee runs `bd update <id> --assignee=<value>` to set an issue's assignee.
+func SetAssignee(issueID, assignee string) error {
+	return execWithTimeout(timeoutShort, "bd", "update", issueID, "--assignee="+assignee)
+}
+
 // CloseIssue runs `bd close <id>` to close an issue.
 func CloseIssue(issueID string) error {
 	return execWithTimeout(timeoutShort, "bd", "close", issueID)
