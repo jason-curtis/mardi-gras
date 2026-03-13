@@ -57,8 +57,6 @@ func logMsg(msg tea.Msg) {
 		debugLog.Printf("KbdEnhance %+v", msg)
 
 	// App messages — log type only to avoid noise
-	case headerShimmerMsg:
-		// too frequent, skip
 	case gasTownTickMsg:
 		// too frequent, skip
 	default:

@@ -74,9 +74,6 @@ type Model struct {
 	// Toast notification
 	toast components.Toast
 
-	// Confetti animation
-	confetti Confetti
-
 	// Change indicators: track recently changed issue IDs
 	changedIDs   map[string]bool
 	changedAt    time.Time
@@ -145,9 +142,6 @@ type Model struct {
 
 	// Layout preset (cycle with command palette)
 	layoutPreset LayoutPreset
-
-	// Bead string shimmer animation
-	beadOffset int
 
 	// Metadata schema from .beads/config.yaml
 	metadataSchema *data.MetadataSchema
@@ -237,7 +231,6 @@ func (m Model) Init() tea.Cmd {
 	cmds := []tea.Cmd{
 		m.startPoll(),
 		agentPoll,
-		headerShimmerCmd(),
 	}
 	if m.sourceMode == data.SourceCLI {
 		cmds = append(cmds, fetchCurrentIssue, fetchDoctorDiagnostics)
@@ -480,9 +473,6 @@ type doctorResultMsg struct {
 
 // gasTownTickMsg drives liveness animations (breathing dots, duration timers).
 type gasTownTickMsg struct{}
-
-// headerShimmerMsg drives the bead string shimmer animation.
-type headerShimmerMsg struct{}
 
 // Update implements tea.Model.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -1194,19 +1184,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Force reload: reset lastFileMod for JSONL, or immediate fetch for CLI
 		m.lastFileMod = time.Time{}
 		cmds := []tea.Cmd{toastCmd, m.startPollImmediate()}
-		// Trigger confetti on close
-		if msg.action == "closed" && m.width > 0 && m.height > 0 {
-			m.confetti = NewConfetti(m.width, m.height)
-			cmds = append(cmds, m.confetti.Tick())
-		}
 		return m, tea.Batch(cmds...)
-
-	case confettiTickMsg:
-		m.confetti.Update()
-		if m.confetti.Active() {
-			return m, m.confetti.Tick()
-		}
-		return m, nil
 
 	case gasTownTickMsg:
 		m.gasTown.Tick()
@@ -1216,10 +1194,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.gasTownTicking = false
 		return m, nil
-
-	case headerShimmerMsg:
-		m.beadOffset++
-		return m, headerShimmerCmd()
 
 	case components.ToastDismissMsg:
 		m.toast = components.Toast{}
@@ -2338,7 +2312,6 @@ func (m *Model) layout() {
 		TownStatus:       m.townStatus,
 		GasTownAvailable: m.gtEnv.Available,
 		ProblemCount:     len(m.allProblems()),
-		BeadOffset:       m.beadOffset,
 		CurrentIssueID:   m.currentIssueID,
 	}
 
@@ -2406,7 +2379,6 @@ func (m *Model) rebuildParade() {
 		TownStatus:       m.townStatus,
 		GasTownAvailable: m.gtEnv.Available,
 		ProblemCount:     len(m.allProblems()),
-		BeadOffset:       m.beadOffset,
 		CurrentIssueID:   m.currentIssueID,
 	}
 
@@ -2531,14 +2503,6 @@ func (m *Model) gatedPollAgentState() tea.Cmd {
 }
 
 const gasTownTickInterval = 1 * time.Second
-const headerShimmerInterval = 500 * time.Millisecond
-
-// headerShimmerCmd returns a Cmd that fires a headerShimmerMsg for bead animation.
-func headerShimmerCmd() tea.Cmd {
-	return tea.Tick(headerShimmerInterval, func(time.Time) tea.Msg {
-		return headerShimmerMsg{}
-	})
-}
 
 // gasTownTickCmd returns a Cmd that fires a gasTownTickMsg after the interval.
 func gasTownTickCmd() tea.Cmd {
@@ -2687,14 +2651,6 @@ func (m Model) View() tea.View {
 		bottomBar,
 	)
 
-	// Confetti overlay
-	if m.confetti.Active() {
-		overlay := m.confetti.View()
-		if overlay != "" {
-			screen = overlayStrings(screen, overlay)
-		}
-	}
-
 	if m.showPalette {
 		return altView(m.palette.View())
 	}
@@ -2724,49 +2680,6 @@ func (m Model) View() tea.View {
 	}
 
 	return altView(screen)
-}
-
-// overlayStrings composites non-space characters from overlay onto base.
-func overlayStrings(base, overlay string) string {
-	baseLines := splitLines(base)
-	overlayLines := splitLines(overlay)
-
-	for y := 0; y < len(overlayLines) && y < len(baseLines); y++ {
-		baseRunes := []rune(baseLines[y])
-		overlayRunes := []rune(overlayLines[y])
-		for x := 0; x < len(overlayRunes) && x < len(baseRunes); x++ {
-			if overlayRunes[x] != ' ' {
-				baseRunes[x] = overlayRunes[x]
-			}
-		}
-		baseLines[y] = string(baseRunes)
-	}
-
-	return joinLines(baseLines)
-}
-
-func splitLines(s string) []string {
-	var lines []string
-	start := 0
-	for i := 0; i < len(s); i++ {
-		if s[i] == '\n' {
-			lines = append(lines, s[start:i])
-			start = i + 1
-		}
-	}
-	lines = append(lines, s[start:])
-	return lines
-}
-
-func joinLines(lines []string) string {
-	result := ""
-	for i, line := range lines {
-		if i > 0 {
-			result += "\n"
-		}
-		result += line
-	}
-	return result
 }
 
 func plural(n int) string {
