@@ -118,6 +118,7 @@ func allSections() []helpSection {
 			title: "DETAIL",
 			bindings: []helpBinding{
 				{key: "j / k", desc: "Scroll up/down"},
+				{key: "e", desc: "Edit text field (title, desc, notes...)"},
 				{key: "esc", desc: "Back to parade pane"},
 				{key: "/", desc: "Enter filter mode"},
 				{key: "a", desc: "Launch agent (tmux: new window)"},

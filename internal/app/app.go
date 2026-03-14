@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
+	"strings"
 	"time"
 
+	"charm.land/bubbles/v2/textarea"
 	"charm.land/bubbles/v2/textinput"
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
@@ -120,6 +122,12 @@ type Model struct {
 	mailComposeAddress string
 	mailComposeSubject string
 	mailComposeInput   textinput.Model
+
+	// Field editor (inline textarea for bead text fields)
+	editingField  bool
+	fieldEditor   textarea.Model
+	fieldEditName string // "title", "description", "notes", "design", "acceptance"
+	fieldEditID   string // issue ID being edited
 
 	// Problems view
 	showProblems bool
@@ -584,6 +592,32 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		logRoute("recoveryDialog forward")
 		var cmd tea.Cmd
 		m.recoveryDialog, cmd = m.recoveryDialog.Update(msg)
+		return m, cmd
+	}
+
+	// Forward all messages to field editor when active
+	if m.editingField {
+		if km, ok := msg.(tea.KeyPressMsg); ok {
+			switch km.String() {
+			case "ctrl+c":
+				return m, tea.Quit
+			case "esc":
+				m.editingField = false
+				return m, nil
+			case "ctrl+d":
+				m.editingField = false
+				issueID := m.fieldEditID
+				field := m.fieldEditName
+				value := m.fieldEditor.Value()
+				return m, func() tea.Msg {
+					err := data.UpdateTextField(issueID, field, value)
+					return mutateResultMsg{issueID: issueID, action: field + " updated", err: err}
+				}
+			}
+		}
+		logRoute("fieldEditor forward")
+		var cmd tea.Cmd
+		m.fieldEditor, cmd = m.fieldEditor.Update(msg)
 		return m, cmd
 	}
 
@@ -1700,6 +1734,21 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.detail.Viewport.ScrollDown(1)
 		case "k", "up":
 			m.detail.Viewport.ScrollUp(1)
+		case "e":
+			// Open field picker to edit a text field
+			if m.parade.SelectedIssue == nil {
+				return m, nil
+			}
+			commands := []components.PaletteCommand{
+				{Name: "Title", Desc: "Edit issue title", Action: components.ActionEditTitle},
+				{Name: "Description", Desc: "Edit description", Action: components.ActionEditDescription},
+				{Name: "Notes", Desc: "Edit notes", Action: components.ActionEditNotes},
+				{Name: "Design", Desc: "Edit design notes", Action: components.ActionEditDesign},
+				{Name: "Acceptance Criteria", Desc: "Edit acceptance criteria", Action: components.ActionEditAcceptance},
+			}
+			m.showPalette = true
+			m.palette = components.NewPalette(m.width, m.height, commands)
+			return m, m.palette.Init()
 		case "m":
 			// Mark current molecule step as done
 			if m.detail.MoleculeDAG != nil {
@@ -2051,6 +2100,16 @@ func (m Model) executePaletteAction(action components.PaletteAction) (tea.Model,
 		m.recovering = true
 		m.recoveryDialog = components.NewRecoveryDialog(rigName, orphans, m.width, m.height)
 		return m, nil
+	case components.ActionEditTitle:
+		return m.openFieldEditor("title")
+	case components.ActionEditDescription:
+		return m.openFieldEditor("description")
+	case components.ActionEditNotes:
+		return m.openFieldEditor("notes")
+	case components.ActionEditDesign:
+		return m.openFieldEditor("design")
+	case components.ActionEditAcceptance:
+		return m.openFieldEditor("acceptance")
 	case components.ActionHelp:
 		m.showHelp = true
 		return m, nil
@@ -2058,6 +2117,55 @@ func (m Model) executePaletteAction(action components.PaletteAction) (tea.Model,
 		return m, tea.Quit
 	}
 	return m, nil
+}
+
+// openFieldEditor initializes the textarea overlay for editing a bead text field.
+func (m Model) openFieldEditor(field string) (tea.Model, tea.Cmd) {
+	issue := m.parade.SelectedIssue
+	if issue == nil {
+		return m, nil
+	}
+
+	var currentValue string
+	switch field {
+	case "title":
+		currentValue = issue.Title
+	case "description":
+		currentValue = issue.Description
+	case "notes":
+		currentValue = issue.Notes
+	case "design":
+		currentValue = issue.Design
+	case "acceptance":
+		currentValue = issue.AcceptanceCriteria
+	}
+
+	ta := textarea.New()
+	ta.SetValue(currentValue)
+	editorWidth := m.width - 12
+	if editorWidth > 80 {
+		editorWidth = 80
+	}
+	if editorWidth < 40 {
+		editorWidth = 40
+	}
+	ta.SetWidth(editorWidth)
+	editorHeight := m.height - 10
+	if editorHeight > 20 {
+		editorHeight = 20
+	}
+	if editorHeight < 5 {
+		editorHeight = 5
+	}
+	ta.SetHeight(editorHeight)
+	ta.CharLimit = 0
+	ta.MaxHeight = 0
+
+	m.editingField = true
+	m.fieldEditor = ta
+	m.fieldEditName = field
+	m.fieldEditID = issue.ID
+	return m, ta.Focus()
 }
 
 // handleGasTownAction processes actions emitted by the Gas Town panel.
@@ -2726,6 +2834,16 @@ func (m Model) View() tea.View {
 		rdContent := lipgloss.JoinVertical(lipgloss.Left, rdTitle, "", rdBody, "", rdHint)
 		rdBox := ui.HelpOverlayBg.Width(m.width - 8).Render(rdContent)
 		return altView(lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, rdBox))
+	}
+
+	if m.editingField {
+		fieldLabel := strings.ToUpper(m.fieldEditName)
+		edTitle := ui.HelpTitle.Render("[ EDIT " + fieldLabel + " ]")
+		edBody := m.fieldEditor.View()
+		edHint := ui.HelpHint.Render("ctrl+d save  esc cancel")
+		edContent := lipgloss.JoinVertical(lipgloss.Left, edTitle, "", edBody, "", edHint)
+		edBox := ui.HelpOverlayBg.Width(m.width - 8).Render(edContent)
+		return altView(lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, edBox))
 	}
 
 	return altView(screen)

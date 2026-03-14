@@ -40,6 +40,11 @@ const (
 	ActionCascadeClose
 	ActionCycleLayout
 	ActionRecoverRigs
+	ActionEditTitle
+	ActionEditDescription
+	ActionEditNotes
+	ActionEditDesign
+	ActionEditAcceptance
 )
 
 // PaletteCommand is a single entry in the command palette.

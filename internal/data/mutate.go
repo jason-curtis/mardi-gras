@@ -1,7 +1,10 @@
 package data
 
 import (
+	"bytes"
+	"context"
 	"fmt"
+	"os/exec"
 	"strings"
 )
 
@@ -40,6 +43,21 @@ func CreateIssue(title string, issueType IssueType, priority Priority) (string, 
 	}
 	// bd create prints the new issue ID
 	return strings.TrimSpace(string(out)), nil
+}
+
+// UpdateTextField updates a text field on an issue.
+// The field parameter should be one of: title, description, notes, design, acceptance.
+// For description, content is piped via stdin to handle large/multiline text safely.
+// Other fields are passed as command-line args (safe because exec.Command bypasses the shell).
+func UpdateTextField(issueID, field, value string) error {
+	if field == "description" {
+		ctx, cancel := context.WithTimeout(context.Background(), timeoutShort)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, "bd", "update", issueID, "--stdin")
+		cmd.Stdin = bytes.NewReader([]byte(value))
+		return cmd.Run()
+	}
+	return execWithTimeout(timeoutShort, "bd", "update", issueID, "--"+field+"="+value)
 }
 
 // BranchName generates a git branch name from an issue.
